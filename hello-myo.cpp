@@ -6,10 +6,16 @@
 #include <iomanip>
 #include <stdexcept>
 #include <string>
+#include <sstream>
 #include <algorithm>
+#include <windows.h>
+#include <stdio.h>
+#include <conio.h>
+#include <tchar.h>
 
 // The only file that needs to be included to use the Myo C++ SDK is myo.hpp.
 #include <myo/myo.hpp>
+using namespace std;
 
 // Classes that inherit from myo::DeviceListener can be used to receive events from Myo devices. DeviceListener
 // provides several virtual functions for handling different kinds of events. If you do not override an event, the
@@ -33,6 +39,22 @@ public:
         isUnlocked = false;
     }
 
+	LPCSTR GetPipeName() {
+		return "\\\\.\\pipe\\flightPipe";
+	}
+
+	void writeToNamedPipe(int &roll, int &pitch, int &yaw) {
+		ostringstream os;
+		HANDLE pipe = CreateFile(GetPipeName(), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
+		if (pipe == INVALID_HANDLE_VALUE)
+			cout << "Error: " << GetLastError();
+		os << roll << " " << pitch << " " << yaw << endl;
+		string message = os.str();
+
+		DWORD numWritten;
+		WriteFile(pipe, message.c_str(), message.length(), &numWritten, NULL);
+	}
+
     // onOrientationData() is called whenever the Myo device provides its current orientation, which is represented
     // as a unit quaternion.
     void onOrientationData(myo::Myo* myo, uint64_t timestamp, const myo::Quaternion<float>& quat)
@@ -54,6 +76,8 @@ public:
         roll_w = static_cast<int>((roll + (float)M_PI)/(M_PI * 2.0f) * 360);
         pitch_w = static_cast<int>((pitch + (float)M_PI/2.0f)/M_PI * 360);
         yaw_w = static_cast<int>((yaw + (float)M_PI)/(M_PI * 2.0f) * 360);
+
+		writeToNamedPipe(roll_w, pitch_w, yaw_w);
     }
 
     // onPose() is called whenever the Myo detects that the person wearing it has changed their pose, for example,
