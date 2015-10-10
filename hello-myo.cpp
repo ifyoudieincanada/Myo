@@ -43,16 +43,21 @@ public:
 		return "\\\\.\\pipe\\flightPipe";
 	}
 
-	void writeToNamedPipe(int &roll, int &pitch, int &yaw) {
+	void writeToNamedPipe(int &roll, int &pitch, int &yaw, string pose, int accelValue) {
 		ostringstream os;
 		HANDLE pipe = CreateFile(GetPipeName(), GENERIC_READ | GENERIC_WRITE, 0, NULL, OPEN_EXISTING, 0, NULL);
 		if (pipe == INVALID_HANDLE_VALUE)
 			cout << "Error: " << GetLastError();
-		os << roll << " " << pitch << " " << yaw << endl;
+		os << ": " << roll << " " << pitch << " " << yaw << pose << accelValue << endl;
+
 		string message = os.str();
 
 		DWORD numWritten;
 		WriteFile(pipe, message.c_str(), message.length(), &numWritten, NULL);
+	}
+
+	void onAccelerometerData(myo::Myo*, uint64_t timestamp, const myo::Vector3<float> & accel) {
+		accelVal = (int)accel.magnitude();
 	}
 
     // onOrientationData() is called whenever the Myo device provides its current orientation, which is represented
@@ -72,12 +77,10 @@ public:
         float yaw = atan2(2.0f * (quat.w() * quat.z() + quat.x() * quat.y()),
                         1.0f - 2.0f * (quat.y() * quat.y() + quat.z() * quat.z()));
 
-        // Convert the floating point angles in radians to a scale from 0 to 18.
+        // Convert the floating point angles in radians to a scale from 0 to 360.
         roll_w = static_cast<int>((roll + (float)M_PI)/(M_PI * 2.0f) * 360);
         pitch_w = static_cast<int>((pitch + (float)M_PI/2.0f)/M_PI * 360);
         yaw_w = static_cast<int>((yaw + (float)M_PI)/(M_PI * 2.0f) * 360);
-
-		writeToNamedPipe(roll_w, pitch_w, yaw_w);
     }
 
     // onPose() is called whenever the Myo detects that the person wearing it has changed their pose, for example,
@@ -140,9 +143,9 @@ public:
         std::cout << '\r';
 
         // Print out the orientation. Orientation data is always available, even if no arm is currently recognized.
-        std::cout << '[' << std::string(roll_w, '*') << std::string(360 - roll_w, ' ') << ']'
-                  << '[' << std::string(pitch_w, '*') << std::string(360 - pitch_w, ' ') << ']'
-                  << '[' << std::string(yaw_w, '*') << std::string(360 - yaw_w, ' ') << ']';
+        std::cout << '[' << std::string((roll_w/3.6/10), '*') << std::string(10 - roll_w/3.6/10, ' ') << ']'
+                  << '[' << std::string((pitch_w/3.6/10), '*') << std::string(10 - pitch_w/3.6/10, ' ') << ']'
+                  << '[' << std::string((yaw_w/3.6/10), '*') << std::string(10 - yaw_w/3.6/10, ' ') << ']';
 
         if (onArm) {
             // Print out the lock state, the currently recognized pose, and which arm Myo is being worn on.
@@ -155,9 +158,11 @@ public:
             std::cout << '[' << (isUnlocked ? "unlocked" : "locked  ") << ']'
                       << '[' << (whichArm == myo::armLeft ? "L" : "R") << ']'
                       << '[' << poseString << std::string(14 - poseString.size(), ' ') << ']';
+			writeToNamedPipe(roll_w, pitch_w, yaw_w, poseString, accelVal);
         } else {
             // Print out a placeholder for the arm and pose when Myo doesn't currently know which arm it's on.
             std::cout << '[' << std::string(8, ' ') << ']' << "[?]" << '[' << std::string(14, ' ') << ']';
+			writeToNamedPipe(roll_w, pitch_w, yaw_w, " ", 0);
         }
 
         std::cout << std::flush;
@@ -171,7 +176,7 @@ public:
     bool isUnlocked;
 
     // These values are set by onOrientationData() and onPose() above.
-    int roll_w, pitch_w, yaw_w;
+    int roll_w, pitch_w, yaw_w, accelVal;
     myo::Pose currentPose;
 };
 
